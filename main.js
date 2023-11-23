@@ -944,23 +944,12 @@ async function main() {
                     ? innerHeight
                     : 1;
             let inv = invert4(viewMatrix);
-            if (e.shiftKey) {
-                inv = translate4(
-                    inv,
-                    (e.deltaX * scale) / innerWidth,
-                    (e.deltaY * scale) / innerHeight,
-                    0,
-                );
-            } else {
-                let preY = inv[13];
-                inv = translate4(
-                    inv,
-                    0,
-                    0,
-                    (-7 * (e.deltaY * scale)) / innerHeight,
-                );
-                inv[13] = preY;
-            }
+            inv = translate4(
+                inv,
+                (e.deltaX * scale) / innerWidth,
+                (e.deltaY * scale) / innerHeight,
+                (-5 * (e.deltaY * scale)) / innerHeight,
+            );
 
             viewMatrix = invert4(inv);
         },
