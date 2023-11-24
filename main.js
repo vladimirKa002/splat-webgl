@@ -722,23 +722,32 @@ void main () {
 
 `.trim();
 
-let defaultViewMatrix = [
-    0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
-    0.03, 6.55, 1,
-];
-let viewMatrix = defaultViewMatrix;
-async function main() {
-    let carousel = true;
+const rowLength = 3 * 4 + 3 * 4 + 4 + 4;
+
+function triggerWorker(splatData, worker){
+    if (
+        splatData[0] == 112 &&
+        splatData[1] == 108 &&
+        splatData[2] == 121 &&
+        splatData[3] == 10
+    ) {
+        // ply file magic header means it should be handled differently
+        worker.postMessage({ ply: splatData.buffer });
+    } else {
+        worker.postMessage({
+            buffer: splatData.buffer,
+            vertexCount: Math.floor(splatData.length / rowLength),
+        });
+    }
+}
+
+async function downloadFile(){
     const params = new URLSearchParams(location.search);
-    try {
-        viewMatrix = JSON.parse(decodeURIComponent(location.hash.slice(1)));
-        carousel = false;
-    } catch (err) {}
     const url = new URL(
         // "nike.splat",
         // location.href,
-        params.get("url") || "train.splat",
-        "https://huggingface.co/cakewalk/splat-data/resolve/main/",
+        params.get("url") || "statue_full.splat",
+        "https://raw.githubusercontent.com/vladimirka002/splat-webgl/main/models/",
     );
     const req = await fetch(url, {
         mode: "cors", // no-cors, *cors, same-origin
@@ -748,7 +757,23 @@ async function main() {
     if (req.status != 200)
         throw new Error(req.status + " Unable to load " + req.url);
 
-    const rowLength = 3 * 4 + 3 * 4 + 4 + 4;
+    return req
+}
+
+let defaultViewMatrix = [
+    0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
+    0.03, 6.55, 1,
+];
+let viewMatrix = defaultViewMatrix;
+async function main() {
+    let carousel = true;
+    try {
+        viewMatrix = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+        carousel = false;
+    } catch (err) {}
+
+    const req = await downloadFile()
+
     const reader = req.body.getReader();
     let splatData = new Uint8Array(req.headers.get("content-length"));
 
@@ -903,6 +928,8 @@ async function main() {
             vertexCount = e.data.vertexCount;
         }
     };
+
+    triggerWorker(splatData, worker);
 
     let activeKeys = [];
 
@@ -1151,44 +1178,12 @@ async function main() {
 
     const selectFile = (file) => {
         const fr = new FileReader();
-        if (/\.json$/i.test(file.name)) {
-            fr.onload = () => {
-                cameras = JSON.parse(fr.result);
-                viewMatrix = getViewMatrix(cameras[0]);
-                projectionMatrix = getProjectionMatrix(
-                    camera.fx / downsample,
-                    camera.fy / downsample,
-                    canvas.width,
-                    canvas.height,
-                );
-                gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
-
-                console.log("Loaded Cameras");
-            };
-            fr.readAsText(file);
-        } else {
-            stopLoading = true;
-            fr.onload = () => {
-                splatData = new Uint8Array(fr.result);
-                console.log("Loaded", Math.floor(splatData.length / rowLength));
-
-                if (
-                    splatData[0] == 112 &&
-                    splatData[1] == 108 &&
-                    splatData[2] == 121 &&
-                    splatData[3] == 10
-                ) {
-                    // ply file magic header means it should be handled differently
-                    worker.postMessage({ ply: splatData.buffer });
-                } else {
-                    worker.postMessage({
-                        buffer: splatData.buffer,
-                        vertexCount: Math.floor(splatData.length / rowLength),
-                    });
-                }
-            };
-            fr.readAsArrayBuffer(file);
-        }
+        stopLoading = true;
+        fr.onload = () => {
+            splatData = new Uint8Array(fr.result);
+            triggerWorker(splatData, worker);
+        };
+        fr.readAsArrayBuffer(file);
     };
 
     window.addEventListener("hashchange", (e) => {
